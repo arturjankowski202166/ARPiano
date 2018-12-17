@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QCARConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="qcar_config.xsd">
+  <Tracking>
+    <ImageTarget name="keyboard-textured" size="1000.000000 1071.365601" />
+    <ImageTarget name="stones2" size="1000.000000 678.059509" />
+    <ImageTarget name="stones" size="500.000000 339.029755" />
+    <ImageTarget name="PianoUnderlay" size="1000.000000 700.000000" />
+    <ImageTarget name="keyboard-octave" size="30.000000 32.140968" />
+  </Tracking>
+</QCARConfig>
