@@ -1,183 +1,138 @@
-﻿using UnityEngine;
-using System;
-using System.IO;
+﻿
+using System.IO; // for FileStream
+using System; // for BitConverter and Byte Type
+using UnityEngine;
 
 public class AudioRenderer : MonoBehaviour
 {
-    #region Fields, Properties, and Inner Classes
-    // constants for the wave file header
-    private const int HEADER_SIZE = 44;
-    private const short BITS_PER_SAMPLE = 16;
-    private const int SAMPLE_RATE = 44100;
 
-    // the number of audio channels in the output file
-    private int channels = 2;
+    public int bufferSize;
+    private int numBuffers;
+    private int outputRate = 44100;
+    private String fileName;
+    private int headerSize = 44; //default for uncompressed wav
+     
+    public bool recOutput = false;
+     
+    private FileStream fileStream;
 
-    // the audio stream instance
-    private MemoryStream outputStream;
-    private BinaryWriter outputWriter;
-
-    // should this object be rendering to the output stream?
-    public bool Rendering = false;
-
-    /// The status of a render
-    public enum Status
+    public void Awake()
     {
-        UNKNOWN,
-        SUCCESS,
-        FAIL,
-        ASYNC
+        AudioSettings.outputSampleRate = outputRate;
     }
 
-    /// The result of a render.
-    public class Result
+    void Start()
     {
-        public Status State;
-        public string Message;
+        fileName = Application.persistentDataPath + "recTesterzzz.wav";
+        AudioSettings.GetDSPBufferSize(out bufferSize, out numBuffers);
+    }
 
-        public Result(Status newState = Status.UNKNOWN, string newMessage = "")
+    void Update()
+    {
+        if (recOutput)
         {
-            this.State = newState;
-            this.Message = newMessage;
-        }
-    }
-    #endregion
-
-    public AudioRenderer()
-    {
-        this.Clear();
-    }
-
-    // reset the renderer
-    public void Clear()
-    {
-        this.outputStream = new MemoryStream();
-        this.outputWriter = new BinaryWriter(outputStream);
-    }
-
-    /// Write a chunk of data to the output stream.
-    public void Write(float[] audioData)
-    {
-        // Convert numeric audio data to bytes
-        for (int i = 0; i < audioData.Length; i++)
-        {
-            // write the short to the stream
-            this.outputWriter.Write((short)(audioData[i] * (float)Int16.MaxValue));
-        }
-    }
-
-    // write the incoming audio to the output string
-    void OnAudioFilterRead(float[] data, int channels)
-    {
-        if (this.Rendering)
-        {
-            // store the number of channels we are rendering
-            this.channels = channels;
-
-            // store the data stream
-            this.Write(data);
-        }
-
-    }
-
-    #region File I/O
-    public AudioRenderer.Result Save(string filename)
-    {
-        Result result = new AudioRenderer.Result();
-
-        if (outputStream.Length > 0)
-        {
-            // add a header to the file so we can send it to the SoundPlayer
-            this.AddHeader();
-
-            // if a filename was passed in
-            if (filename.Length > 0)
-            {
-                // Save to a file. Print a warning if overwriting a file.
-                if (File.Exists(filename))
-                    Debug.LogWarning("Overwriting " + filename + "...");
-
-                // reset the stream pointer to the beginning of the stream
-                outputStream.Position = 0;
-
-                // write the stream to a file
-                FileStream fs = File.OpenWrite(filename);
-
-                this.outputStream.WriteTo(fs);
-
-                fs.Close();
-
-                // for debugging only
-                Debug.Log("Finished saving to " + filename + ".");
-            }
-
-            result.State = Status.SUCCESS;
+            StartWriting(fileName);
+            //recOutput = false;
         }
         else
         {
-            Debug.LogWarning("There is no audio data to save!");
+        }
+    }
 
-            result.State = Status.FAIL;
-            result.Message = "There is no audio data to save!";
+    void StartWriting(String name)
+    {
+        fileStream = new FileStream(name, FileMode.Create);
+        byte emptyByte = new byte();
+
+        for (int i = 0; i < headerSize; i++) //preparing the header
+        {
+            fileStream.WriteByte(emptyByte);
+        }
+    }
+
+    void OnAudioFilterRead(float[] data, int channels)
+    {
+        if (recOutput)
+        {
+            ConvertAndWrite(data); //audio data is interlaced
+        }
+    }
+
+    void ConvertAndWrite(float[] dataSource)
+    {
+
+        Int16[] intData = new Int16[dataSource.Length];
+        //converting in 2 steps : float[] to Int16[], //then Int16[] to Byte[]
+
+        Byte[] bytesData = new Byte[dataSource.Length * 2];
+        //bytesData array is twice the size of
+        //dataSource array because a float converted in Int16 is 2 bytes.
+
+        int rescaleFactor = 32767; //to convert float to Int16
+
+        for (int i = 0; i < dataSource.Length; i++)
+        {
+            intData[i] = (Int16)(dataSource[i] * rescaleFactor);
+            Byte[] byteArr = new Byte[2];
+            byteArr = BitConverter.GetBytes(intData[i]);
+            byteArr.CopyTo(bytesData, i * 2);
         }
 
-        return result;
+        fileStream.Write(bytesData, 0, bytesData.Length);
     }
 
-    /// This generates a simple header for a canonical wave file, 
-    /// which is the simplest practical audio file format. It
-    /// writes the header and the audio file to a new stream, then
-    /// moves the reference to that stream.
-    /// 
-    /// See this page for details on canonical wave files: 
-    /// http://www.lightlink.com/tjweber/StripWav/Canon.html
-    private void AddHeader()
+    public void WriteHeader()
     {
-        // reset the output stream
-        outputStream.Position = 0;
 
-        // calculate the number of samples in the data chunk
-        long numberOfSamples = outputStream.Length / (BITS_PER_SAMPLE / 8);
+        fileStream.Seek(0, SeekOrigin.Begin);
 
-        // create a new MemoryStream that will have both the audio data AND the header
-        MemoryStream newOutputStream = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(newOutputStream);
+        Byte[] riff  = System.Text.Encoding.UTF8.GetBytes("RIFF");
+        fileStream.Write(riff, 0, 4);
 
-        writer.Write(0x46464952); // "RIFF" in ASCII
+        Byte[] chunkSize = BitConverter.GetBytes(fileStream.Length - 8);
+        fileStream.Write(chunkSize, 0, 4);
 
-        // write the number of bytes in the entire file
-        writer.Write((int)(HEADER_SIZE + (numberOfSamples * BITS_PER_SAMPLE * channels / 8)) - 8);
+        Byte[] wave = System.Text.Encoding.UTF8.GetBytes("WAVE");
+        fileStream.Write(wave, 0, 4);
 
-        writer.Write(0x45564157); // "WAVE" in ASCII
-        writer.Write(0x20746d66); // "fmt " in ASCII
-        writer.Write(16);
+        Byte[] fmt = System.Text.Encoding.UTF8.GetBytes("fmt ");
+        fileStream.Write(fmt, 0, 4);
 
-        // write the format tag. 1 = PCM
-        writer.Write((short)1);
+        Byte[] subChunk1 = BitConverter.GetBytes(16);
+        fileStream.Write(subChunk1, 0, 4);
 
-        // write the number of channels.
-        writer.Write((short)channels);
+        UInt16 two = 2;
+        UInt16 one = 1;
 
-        // write the sample rate. 44100 in this case. The number of audio samples per second
-        writer.Write(SAMPLE_RATE);
+        Byte[] audioFormat = BitConverter.GetBytes(one);
+        fileStream.Write(audioFormat, 0, 2);
 
-        writer.Write(SAMPLE_RATE * channels * (BITS_PER_SAMPLE / 8));
-        writer.Write((short)(channels * (BITS_PER_SAMPLE / 8)));
+        Byte[] numChannels = BitConverter.GetBytes(two);
+        fileStream.Write(numChannels, 0, 2);
 
-        // 16 bits per sample
-        writer.Write(BITS_PER_SAMPLE);
+        Byte[] sampleRate = BitConverter.GetBytes(outputRate);
+        fileStream.Write(sampleRate, 0, 4);
 
-        // "data" in ASCII. Start the data chunk.
-        writer.Write(0x61746164);
+        Byte[] byteRate = BitConverter.GetBytes(outputRate * 4);
+        // sampleRate * bytesPerSample*number of channels, here 44100*2*2
 
-        // write the number of bytes in the data portion
-        writer.Write((int)(numberOfSamples * BITS_PER_SAMPLE * channels / 8));
+        fileStream.Write(byteRate, 0, 4);
 
-        // copy over the actual audio data
-        this.outputStream.WriteTo(newOutputStream);
+        UInt16 four = 4;
+        Byte[] blockAlign = BitConverter.GetBytes(four);
+        fileStream.Write(blockAlign, 0, 2);
 
-        // move the reference to the new stream
-        this.outputStream = newOutputStream;
+        UInt16 sixteen = 16;
+        Byte[] bitsPerSample = BitConverter.GetBytes(sixteen);
+        fileStream.Write(bitsPerSample, 0, 2);
+
+        Byte[] dataString = System.Text.Encoding.UTF8.GetBytes("data");
+        fileStream.Write(dataString, 0, 4);
+
+        Byte[] subChunk2 = BitConverter.GetBytes(fileStream.Length - headerSize);
+        fileStream.Write(subChunk2, 0, 4);
+
+        fileStream.Close();
     }
-    #endregion
+
 }
