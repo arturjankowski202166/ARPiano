@@ -32,7 +32,7 @@ public class FileUploader : MonoBehaviour
         Debug.Log("Starting upload");
         List<IMultipartFormSection> formData = new List<IMultipartFormSection>();
         formData.Add(new MultipartFormFileSection("sampleFile", ReadFully(data), filename,"image/png"));
-        UnityWebRequest www = UnityWebRequest.Post("http://localhost:3000/upload", formData);
+        UnityWebRequest www = UnityWebRequest.Post("https://afternoon-waters-53445.herokuapp.com/upload", formData);
         yield return www.SendWebRequest();
 
         if (www.isNetworkError || www.isHttpError)
