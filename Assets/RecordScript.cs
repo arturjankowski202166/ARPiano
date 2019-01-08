@@ -17,7 +17,7 @@ public class RecordScript : MonoBehaviour
     private AudioRenderer audioRenderer;
     // should this object be rendering to the output stream?
     public bool Rendering = false;
-
+    FileUploader fileUploader;
     // the audio stream instance
     private MemoryStream outputStream;
     private BinaryWriter outputWriter;
@@ -27,11 +27,13 @@ public class RecordScript : MonoBehaviour
     void Start()
     {
         audioRenderer = gameObject.AddComponent(typeof(AudioRenderer)) as AudioRenderer;
+        fileUploader = gameObject.AddComponent(typeof(FileUploader)) as FileUploader;
+        Debug.Log("START :3");
     }
 
     void Update()
     {
-        
+        //Debug.Log("UPDATE :3");
     }
 
     public void SwitchRecording()
@@ -43,6 +45,9 @@ public class RecordScript : MonoBehaviour
             audioRenderer.recOutput = false;
             isRecording = false;
             audioRenderer.WriteHeader();
+            FileStream file = File.OpenRead(Application.persistentDataPath + "recTesterzzz.wav");
+            Debug.Log("Click :3");
+            fileUploader.Upload(Application.persistentDataPath + "recTesterzzz.wav", file);
         }
         else
         {
